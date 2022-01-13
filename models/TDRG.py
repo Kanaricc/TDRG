@@ -5,6 +5,7 @@ from .trans_utils.position_encoding import build_position_encoding
 from .trans_utils.transformer import build_transformer
 
 
+# Actually this is top-K average pooling, which is also named wrongly in the paper.
 class TopKMaxPooling(nn.Module):
     def __init__(self, kmax=1.0):
         super(TopKMaxPooling, self).__init__()
@@ -123,8 +124,10 @@ class TDRG(nn.Module):
 
     @staticmethod
     def cross_scale_attention(x3, x4, x5):
+        # height, which equals to width, in fact the size of pics
         h3, h4, h5 = x3.shape[2], x4.shape[2], x5.shape[2]
         h_max = max(h3, h4, h5)
+        # up sampling
         x3 = F.interpolate(x3, size=(h_max, h_max), mode='bilinear', align_corners=True)
         x4 = F.interpolate(x4, size=(h_max, h_max), mode='bilinear', align_corners=True)
         x5 = F.interpolate(x5, size=(h_max, h_max), mode='bilinear', align_corners=True)
@@ -141,13 +144,16 @@ class TDRG(nn.Module):
 
     def forward_transformer(self, x3, x4):
         # cross scale attention
-        x5 = self.transform_7(x4)
-        x4 = self.transform_14(x4)
-        x3 = self.transform_28(x3)
+        # embed into dimension of transformer
+        x5 = self.transform_7(x4) # conv 3x3 stride 2
+        x4 = self.transform_14(x4) # conv 1x1 stride 1
+        x3 = self.transform_28(x3) # conv 1x1 stride 1
 
         x3, x4, x5 = self.cross_scale_attention(x3, x4, x5)
 
         # transformer encoder
+        # x3[batch, channel, height, width]
+        # note: all zero, no mask
         mask3 = torch.zeros_like(x3[:, 0, :, :], dtype=torch.bool).cuda()
         mask4 = torch.zeros_like(x4[:, 0, :, :], dtype=torch.bool).cuda()
         mask5 = torch.zeros_like(x5[:, 0, :, :], dtype=torch.bool).cuda()
@@ -156,15 +162,19 @@ class TDRG(nn.Module):
         pos4 = self.positional_embedding(x4)
         pos5 = self.positional_embedding(x5)
 
+        # note: this pos* parameter is useless
+        # note: x*[batch, channel, H, W]
         _, feat3 = self.transformer(x3, mask3, self.query_embed.weight, pos3)
         _, feat4 = self.transformer(x4, mask4, self.query_embed.weight, pos4)
         _, feat5 = self.transformer(x5, mask5, self.query_embed.weight, pos5)
 
         # f3 f4 f5: structural guidance
+        # note: compress [batch, channel, H, W] to [batch, channel, H * W]
         f3 = feat3.view(feat3.shape[0], feat3.shape[1], -1).detach()
         f4 = feat4.view(feat4.shape[0], feat4.shape[1], -1).detach()
         f5 = feat5.view(feat5.shape[0], feat5.shape[1], -1).detach()
 
+        # note: GMP -> [batch, channel, 1, 1] -> [batch, channel]
         feat3 = self.GMP(feat3).view(feat3.shape[0], -1)
         feat4 = self.GMP(feat4).view(feat4.shape[0], -1)
         feat5 = self.GMP(feat5).view(feat5.shape[0], -1)
