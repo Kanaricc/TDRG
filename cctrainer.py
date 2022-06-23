@@ -113,10 +113,8 @@ def train(
 
     apmeter_train = AveragePrecisionMeter()
     apmeter_val = AveragePrecisionMeter()
-    apmeter_test = AveragePrecisionMeter()
     apmeter_train.reset()
     apmeter_val.reset()
-    apmeter_test.reset()
 
     helper.register_probe("map/train")
     helper.register_probe("map/val")
@@ -128,6 +126,10 @@ def train(
         helper.register_probe(f"other_val/{i}")
     for i in ["OP", "OR", "OF1", "CP", "CR", "CF1"]:
         helper.register_probe(f"other_val/k_{i}")
+    for i in ["OP", "OR", "OF1", "CP", "CR", "CF1"]:
+        helper.register_probe(f"other_test/{i}")
+    for i in ["OP", "OR", "OF1", "CP", "CR", "CF1"]:
+        helper.register_probe(f"other_test/k_{i}")
 
     helper.ready_to_train()
     for epochi in helper.range_epoch():
@@ -249,7 +251,6 @@ def train(
         helper.end_epoch(map.item())
         apmeter_train.reset()
         apmeter_val.reset()
-        apmeter_test.reset()
 
         if helper.if_need_save_checkpoint():
             torch.save(
@@ -269,6 +270,61 @@ def train(
                 },
                 helper.get_best_checkpoint_slot(),
             )
+        
+        # test phase
+        if helper.if_need_run_test_phase():
+            model.eval()
+            apmeter_test = AveragePrecisionMeter()
+            for batchi,data in helper.range_test():
+                inputs: Tensor = data["image"]
+                targets: Tensor = data["target"]
+                inputs = inputs.to(helper.dev)
+                targets = inputs.to(helper.dev)
+
+                with torch.no_grad():
+                    out_trans, out_gcn, out_sac = model(inputs)
+                outputs = 0.7 * out_trans + 0.3 * out_gcn
+
+                loss = (
+                    criterion(outputs, targets)
+                    + criterion(out_trans, targets)
+                    + criterion(out_gcn, targets)
+                    + criterion(out_sac, targets)
+                )
+                helper.update_loss_probe("test", loss, outputs.size(0))
+                apmeter_test.add(outputs, targets, data["name"])
+            
+            ap = apmeter_test.value()
+            map = ap.mean()
+            OP, OR, OF1, CP, CR, CF1 = apmeter_test.overall()
+            OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_test.overall_topk(3)
+
+            helper.update_probe("map/test", map)
+            helper.tbwriter.add_scalars(
+                "ap/test",
+                list(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
+                epochi,
+            )
+            for k, v in {
+                "OP": OP,
+                "OR": OR,
+                "OF1": OF1,
+                "CP": CP,
+                "CR": CR,
+                "CF1": CF1,
+            }.items():
+                helper.update_probe(f"other_test/{k}", v)
+
+            for k, v in {
+                "OP": OP_k,
+                "OR": OR_k,
+                "OF1": OF1_k,
+                "CP": CP_k,
+                "CR": CR_k,
+                "CF1": CF1_k,
+            }.items():
+                helper.update_probe(f"other_test/k_{k}", v)
+
 
 if __name__=='__main__':
     TrainHelper.auto_bind_and_run(train)
