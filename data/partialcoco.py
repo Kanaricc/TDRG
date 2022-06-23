@@ -11,7 +11,7 @@ class COCO2014Partial(COCO2014Dataset):
     def drop_labels(self,percent:float,seed):
         tmp=self.get_all_labels()
         torch.manual_seed(seed)
-        ran=torch.rand_like(tmp)
+        ran=torch.rand_like(tmp,dtype=torch.float)
         ran[ran<=percent]=1
         ran[ran>percent]=0
         ran=ran.int()
