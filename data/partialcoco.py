@@ -18,4 +18,4 @@ class COCO2014Partial(COCO2014Dataset):
         tmp=tmp*ran
 
         self.apply_new_labels(tmp)
-        logger.warning(f"drop to {percent} labels. the hash of new labels is f{hash(tmp)}")
+        logger.warning(f"drop to {percent} labels. the hash of new labels is {hash(tmp)}")

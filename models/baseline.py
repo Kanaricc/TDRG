@@ -28,7 +28,13 @@ class Baseline(nn.Module):
         self.fc = nn.Linear(feat_dim, num_classes)
 
     def forward(self, x: Tensor):
-        x = self.backbone(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avg_pool(x)
+
         x = torch.flatten(x, 1)
         logits = self.fc(x)
 
