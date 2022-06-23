@@ -4,6 +4,7 @@ from chinopie.datasets import COCO2014Dataset, get_coco_labels
 from chinopie.probes.average_precision_meter import AveragePrecisionMeter
 from chinopie.preprocess import DatasetWrapper
 from data import MultiScaleCrop
+from data.partialcoco import COCO2014Partial
 import torch.utils.data
 from torch.utils.data import DataLoader
 import torch
@@ -35,6 +36,7 @@ def train(
     max_clip_grad_norm: float = 10.0,
     image_size: int = 448,
     epoch_step: List[int] = [40],
+    label_percent:float=1.0
 ):
     helper = TrainHelper(
         "tdrg",
@@ -46,7 +48,6 @@ def train(
         comment="test",
     )
     helper.register_global_params("epoch_step", epoch_step)
-    helper.set_fixed_seed(1)
 
     transform_train = transforms.Compose(
         [
@@ -71,15 +72,16 @@ def train(
         x["image"] = transform(x["image"])
         return x
 
-    trainset = COCO2014Dataset(
+    trainset = COCO2014Partial(
         helper.get_dataset_slot("coco2014"), lambda x: x, "train"
     )
+    trainset.drop_labels(label_percent,1)
     trainset, valset = torch.utils.data.random_split(
         trainset,
         [int(len(trainset) * 0.8), len(trainset) - int(len(trainset) * 0.8)],
         generator=torch.Generator().manual_seed(1),
     )
-    testset = COCO2014Dataset(helper.get_dataset_slot("coco2014"), transform_val, "val")
+    testset = COCO2014Partial(helper.get_dataset_slot("coco2014"), transform_val, "val")
     dataloader_train = DataLoader(
         DatasetWrapper(trainset, lambda x: transform_wrapper(x, transform_train)),
         helper.batch_size,
@@ -97,6 +99,7 @@ def train(
     criterion = torch.nn.MultiLabelSoftMarginLoss().to(helper.dev)
 
     res101 = torchvision.models.resnet101(pretrained=True)
+    helper.set_fixed_seed(1)
     model = TDRG(res101, num_classes).to(helper.dev)
     # model_parallel = DistributedDataParallel(model).to(helper.dev)
 
