@@ -14,6 +14,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.optim import SGD, Optimizer
 import torchvision
 from models import TDRG
+from models.baseline import Baseline
 import numpy as np
 import torchvision.transforms as transforms
 from loguru import logger
@@ -101,8 +102,7 @@ def train(
 
     res101 = torchvision.models.resnet101(pretrained=True)
     helper.set_fixed_seed(1)
-    model = TDRG(res101, num_classes).to(helper.dev)
-    # model_parallel = DistributedDataParallel(model).to(helper.dev)
+    model = Baseline(2048,num_classes).to(helper.dev)
 
     optimizer = SGD(
         model.get_config_optim(lr, lrp),
