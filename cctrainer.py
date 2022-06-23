@@ -36,7 +36,8 @@ def train(
     max_clip_grad_norm: float = 10.0,
     image_size: int = 448,
     epoch_step: List[int] = [40],
-    label_percent:float=1.0
+    label_percent:float=1.0,
+    comment:str='test',
 ):
     helper = TrainHelper(
         "tdrg",
@@ -45,7 +46,7 @@ def train(
         auto_load_checkpoint=False,
         enable_checkpoint=False,
         checkpoint_save_period=None,
-        comment="test",
+        comment=comment,
     )
     helper.register_global_params("epoch_step", epoch_step)
 
