@@ -172,7 +172,7 @@ def train(
             inputs: Tensor = data["image"]
             targets: Tensor = data["target"]
             inputs = inputs.to(helper.dev)
-            targets = inputs.to(helper.dev)
+            targets = targets.to(helper.dev)
 
             with torch.no_grad():
                 outputs = model(inputs)
@@ -276,7 +276,7 @@ def train(
                 inputs: Tensor = data["image"]
                 targets: Tensor = data["target"]
                 inputs = inputs.to(helper.dev)
-                targets = inputs.to(helper.dev)
+                targets = targets.to(helper.dev)
 
                 with torch.no_grad():
                     outputs = model(inputs)
