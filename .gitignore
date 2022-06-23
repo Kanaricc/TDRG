@@ -1,3 +1,5 @@
 /.vscode
 /syncbuaa.sh
 /chinopie
+/dist
+/dist-*.zip

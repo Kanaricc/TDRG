@@ -15,7 +15,9 @@ import torchvision
 from models import TDRG
 import numpy as np
 import torchvision.transforms as transforms
+from loguru import logger
 
+import inspect
 
 def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
     decay = 0.1 if (torch.tensor(helper.get("epoch_step")) == epochi).sum() > 0 else 1.0
@@ -24,14 +26,14 @@ def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
 
 
 def train(
-    epoch_num: int,
-    batch_size: int,
-    lr: float,
-    lrp: float,
-    momentum: float,
-    weight_decay: float,
-    max_clip_grad_norm: float,
-    image_size: int,
+    epoch_num: int = 50,
+    batch_size: int = 8,
+    lr: float = 0.03,
+    lrp: float = 0.1,
+    momentum: float = 0.9,
+    weight_decay: float = 1e-4,
+    max_clip_grad_norm: float = 10.0,
+    image_size: int = 448,
     epoch_step: List[int] = [40],
 ):
     helper = TrainHelper(
@@ -81,10 +83,12 @@ def train(
     dataloader_train = DataLoader(
         DatasetWrapper(trainset, lambda x: transform_wrapper(x, transform_train)),
         helper.batch_size,
+        drop_last=True
     )
     dataloader_val = DataLoader(
         DatasetWrapper(valset, lambda x: transform_wrapper(x, transform_val)),
         helper.batch_size,
+        drop_last=True
     )
     dataloader_test = DataLoader(testset, helper.batch_size)
     num_classes = trainset[0]["target"].size(-1)
@@ -93,8 +97,8 @@ def train(
     criterion = torch.nn.MultiLabelSoftMarginLoss().to(helper.dev)
 
     res101 = torchvision.models.resnet101(pretrained=True)
-    model = TDRG(res101, num_classes)
-    model_parallel = DistributedDataParallel(model).to(helper.dev)
+    model = TDRG(res101, num_classes).to(helper.dev)
+    # model_parallel = DistributedDataParallel(model).to(helper.dev)
 
     optimizer = SGD(
         model.get_config_optim(lr, lrp),
@@ -126,14 +130,14 @@ def train(
         tune_opti(helper, optimizer, epochi)
 
         # train phase
-        model_parallel.train()
+        model.train()
         for batchi, data in helper.range_train():
             inputs: Tensor = data["image"]
             targets: Tensor = data["target"]
             inputs = inputs.to(helper.dev)
-            targets = inputs.to(helper.dev)
+            targets = targets.to(helper.dev)
 
-            out_trans, out_gcn, out_sac = model_parallel(inputs)
+            out_trans, out_gcn, out_sac = model(inputs)
             outputs = 0.7 * out_trans + 0.3 * out_gcn
 
             loss = (
@@ -147,7 +151,7 @@ def train(
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad.clip_grad_norm_(
-                model_parallel.parameters(), max_norm=max_clip_grad_norm
+                model.parameters(), max_norm=max_clip_grad_norm
             )
             optimizer.step()
 
@@ -155,7 +159,7 @@ def train(
             apmeter_train.add(outputs, targets, data["name"])
 
         # val phase
-        model_parallel.eval()
+        model.eval()
         for batchi, data in helper.range_val():
             inputs: Tensor = data["image"]
             targets: Tensor = data["target"]
@@ -163,7 +167,7 @@ def train(
             targets = inputs.to(helper.dev)
 
             with torch.no_grad():
-                out_trans, out_gcn, out_sac = model_parallel(inputs)
+                out_trans, out_gcn, out_sac = model(inputs)
             outputs = 0.7 * out_trans + 0.3 * out_gcn
 
             loss = (
@@ -246,7 +250,7 @@ def train(
         if helper.if_need_save_checkpoint():
             torch.save(
                 {
-                    "model": model_parallel.state_dict(),
+                    "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "helper": helper.export_state(),
                 },
@@ -255,9 +259,12 @@ def train(
         if helper.if_need_save_best_checkpoint():
             torch.save(
                 {
-                    "model": model_parallel.state_dict(),
+                    "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "helper": helper.export_state(),
                 },
                 helper.get_best_checkpoint_slot(),
             )
+
+if __name__=='__main__':
+    TrainHelper.auto_bind_and_run(train)
