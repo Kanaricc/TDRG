@@ -38,14 +38,14 @@ def train(
     image_size: int = 448,
     epoch_step: List[int] = [40],
     label_percent:float=1.0,
-    comment:str='test',
+    comment:str='baseline-fulllabel',
 ):
     helper = TrainHelper(
         "tdrg",
         epoch_num,
         batch_size,
-        auto_load_checkpoint=False,
-        enable_checkpoint=False,
+        auto_load_checkpoint=True,
+        enable_checkpoint=True,
         checkpoint_save_period=None,
         comment=comment,
     )
@@ -111,6 +111,14 @@ def train(
         weight_decay=weight_decay,
     )
 
+    if helper.if_need_load_checkpoint():
+        checkpoint_path=helper.find_latest_checkpoint()
+        if checkpoint_path!=None:
+            checkpoint=torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint['model'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            helper.load_from_checkpoint(checkpoint['helper'])
+
     apmeter_train = AveragePrecisionMeter()
     apmeter_val = AveragePrecisionMeter()
     apmeter_train.reset()
@@ -143,15 +151,9 @@ def train(
             inputs = inputs.to(helper.dev)
             targets = targets.to(helper.dev)
 
-            out_trans, out_gcn, out_sac = model(inputs)
-            outputs = 0.7 * out_trans + 0.3 * out_gcn
+            outputs = model(inputs)
 
-            loss = (
-                criterion(outputs, targets)
-                + criterion(out_trans, targets)
-                + criterion(out_gcn, targets)
-                + criterion(out_sac, targets)
-            )
+            loss = criterion(outputs, targets)
             helper.validate_loss(loss)
             
             optimizer.zero_grad()
@@ -173,15 +175,10 @@ def train(
             targets = inputs.to(helper.dev)
 
             with torch.no_grad():
-                out_trans, out_gcn, out_sac = model(inputs)
-            outputs = 0.7 * out_trans + 0.3 * out_gcn
+                outputs = model(inputs)
 
-            loss = (
-                criterion(outputs, targets)
-                + criterion(out_trans, targets)
-                + criterion(out_gcn, targets)
-                + criterion(out_sac, targets)
-            )
+            loss = criterion(outputs, targets)
+
             helper.update_loss_probe("val", loss, outputs.size(0))
             apmeter_val.add(outputs, targets, data["name"])
 
@@ -282,15 +279,9 @@ def train(
                 targets = inputs.to(helper.dev)
 
                 with torch.no_grad():
-                    out_trans, out_gcn, out_sac = model(inputs)
-                outputs = 0.7 * out_trans + 0.3 * out_gcn
+                    outputs = model(inputs)
 
-                loss = (
-                    criterion(outputs, targets)
-                    + criterion(out_trans, targets)
-                    + criterion(out_gcn, targets)
-                    + criterion(out_sac, targets)
-                )
+                loss = criterion(outputs, targets)
                 helper.update_loss_probe("test", loss, outputs.size(0))
                 apmeter_test.add(outputs, targets, data["name"])
             
