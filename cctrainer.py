@@ -39,6 +39,7 @@ def train(
     epoch_step: List[int] = [40],
     label_percent:float=1.0,
     comment:str='baseline-fulllabel',
+    dry_run = False,
 ):
     helper = TrainHelper(
         "tdrg",
@@ -48,6 +49,7 @@ def train(
         enable_checkpoint=True,
         checkpoint_save_period=None,
         comment=comment,
+        dry_run=dry_run,
     )
     helper.register_global_params("epoch_step", epoch_step)
 
@@ -191,7 +193,7 @@ def train(
         helper.update_probe("map/train", map)
         helper.tbwriter.add_scalars(
             "ap/train",
-            list(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
+            dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
             epochi,
         )
         for k, v in {
@@ -222,7 +224,7 @@ def train(
         helper.update_probe("map/val", map)
         helper.tbwriter.add_scalars(
             "ap/val",
-            list(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
+            dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
             epochi,
         )
         for k, v in {
@@ -293,7 +295,7 @@ def train(
             helper.update_probe("map/test", map)
             helper.tbwriter.add_scalars(
                 "ap/test",
-                list(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
+                dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
                 epochi,
             )
             for k, v in {
