@@ -96,9 +96,10 @@ def train(
         helper.batch_size,
         drop_last=True
     )
-    dataloader_test = DataLoader(testset, helper.batch_size)
+    dataloader_test = DataLoader(testset, helper.batch_size, drop_last=True)
     num_classes = trainset[0]["target"].size(-1)
     helper.register_dataset(trainset, dataloader_train, valset, dataloader_val)
+    helper.register_test_dataset(testset,dataloader_test)
 
     criterion = torch.nn.MultiLabelSoftMarginLoss().to(helper.dev)
 
@@ -128,6 +129,7 @@ def train(
 
     helper.register_probe("map/train")
     helper.register_probe("map/val")
+    helper.register_probe("map/test")
     for i in ["OP", "OR", "OF1", "CP", "CR", "CF1"]:
         helper.register_probe(f"other_train/{i}")
     for i in ["OP", "OR", "OF1", "CP", "CR", "CF1"]:
@@ -293,6 +295,7 @@ def train(
             OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_test.overall_topk(3)
 
             helper.update_probe("map/test", map)
+            helper.update_test_score(map.item())
             helper.tbwriter.add_scalars(
                 "ap/test",
                 dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
