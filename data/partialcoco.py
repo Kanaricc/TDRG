@@ -12,8 +12,9 @@ class COCO2014Partial(COCO2014Dataset):
         tmp=self.get_all_labels()
         torch.manual_seed(seed)
         ran=torch.rand_like(tmp,dtype=torch.float)
-        ran[ran<=percent]=1
-        ran[ran>percent]=0
+        drop_percent=1.0-percent
+        ran[ran<drop_percent]=0
+        ran[ran>=drop_percent]=1
         ran=ran.int()
         tmp=tmp*ran
 

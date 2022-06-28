@@ -122,8 +122,8 @@ def train(
             optimizer.load_state_dict(checkpoint['optimizer'])
             helper.load_from_checkpoint(checkpoint['helper'])
 
-    apmeter_train = AveragePrecisionMeter()
-    apmeter_val = AveragePrecisionMeter()
+    apmeter_train = AveragePrecisionMeter(False)
+    apmeter_val = AveragePrecisionMeter(False)
     apmeter_train.reset()
     apmeter_val.reset()
 
@@ -193,11 +193,6 @@ def train(
         OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_train.overall_topk(3)
 
         helper.update_probe("map/train", map)
-        helper.tbwriter.add_scalars(
-            "ap/train",
-            dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
-            epochi,
-        )
         for k, v in {
             "OP": OP,
             "OR": OR,
@@ -224,11 +219,6 @@ def train(
         OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_val.overall_topk(3)
 
         helper.update_probe("map/val", map)
-        helper.tbwriter.add_scalars(
-            "ap/val",
-            dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
-            epochi,
-        )
         for k, v in {
             "OP": OP,
             "OR": OR,
@@ -249,7 +239,7 @@ def train(
         }.items():
             helper.update_probe(f"other_val/k_{k}", v)
 
-        helper.end_epoch(map.item())
+        helper.end_trainval(map.item())
         apmeter_train.reset()
         apmeter_val.reset()
 
@@ -275,7 +265,7 @@ def train(
         # test phase
         if helper.if_need_run_test_phase():
             model.eval()
-            apmeter_test = AveragePrecisionMeter()
+            apmeter_test = AveragePrecisionMeter(False)
             for batchi,data in helper.range_test():
                 inputs: Tensor = data["image"]
                 targets: Tensor = data["target"]
@@ -296,11 +286,6 @@ def train(
 
             helper.update_probe("map/test", map)
             helper.update_test_score(map.item())
-            helper.tbwriter.add_scalars(
-                "ap/test",
-                dict(zip(get_coco_labels(helper.get_dataset_slot("coco2014")), ap)),
-                epochi,
-            )
             for k, v in {
                 "OP": OP,
                 "OR": OR,
@@ -320,6 +305,7 @@ def train(
                 "CF1": CF1_k,
             }.items():
                 helper.update_probe(f"other_test/k_{k}", v)
+        helper.end_epoch()
 
 
 if __name__=='__main__':
