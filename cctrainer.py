@@ -18,6 +18,7 @@ from models.baseline import Baseline
 import numpy as np
 import torchvision.transforms as transforms
 from loguru import logger
+from losses import get_loss
 
 import inspect
 
@@ -28,6 +29,7 @@ def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
 
 
 def train(
+    loss_type:str = 'bce',
     epoch_num: int = 50,
     batch_size: int = 8,
     lr: float = 0.03,
@@ -75,14 +77,21 @@ def train(
     def transform_wrapper(x, transform):
         x["image"] = transform(x["image"])
         return x
-
-    trainset = COCO2014Partial(
-        helper.get_dataset_slot("coco2014"), lambda x: x, "train"
-    )
-    trainset.drop_labels(label_percent,1)
+    
+    if loss_type=='bce':
+        raw_trainset = COCO2014Partial(
+            helper.get_dataset_slot("coco2014"), lambda x: x, "train"
+        )
+    else:
+        raw_trainset = COCO2014Partial(
+            helper.get_dataset_slot("coco2014"), lambda x: x, "train",negatives_as_neg1=True
+        )
+        logger.info("use negative 1 for negative labels")
+    # seems not proper. we do not need to drop validation set.
+    raw_trainset.drop_labels(label_percent,1)
     trainset, valset = torch.utils.data.random_split(
-        trainset,
-        [int(len(trainset) * 0.8), len(trainset) - int(len(trainset) * 0.8)],
+        raw_trainset,
+        [int(len(raw_trainset) * 0.8), len(raw_trainset) - int(len(raw_trainset) * 0.8)],
         generator=torch.Generator().manual_seed(1),
     )
     testset = COCO2014Partial(helper.get_dataset_slot("coco2014"), transform_val, "val")
@@ -102,8 +111,8 @@ def train(
     helper.register_test_dataset(testset,dataloader_test)
 
     criterion = torch.nn.MultiLabelSoftMarginLoss().to(helper.dev)
+    criterion = get_loss(loss_type)
 
-    res101 = torchvision.models.resnet101(pretrained=True)
     helper.set_fixed_seed(1)
     model = Baseline(2048,num_classes).to(helper.dev)
 
@@ -178,13 +187,16 @@ def train(
             inputs = inputs.to(helper.dev)
             targets = targets.to(helper.dev)
 
+            # to get full labels for ap calculation
+            gt_targets=raw_trainset.get_full_labels(data['index']).to(helper.dev)
+
             with torch.no_grad():
                 outputs = model(inputs)
 
             loss = criterion(outputs, targets)
 
             helper.update_loss_probe("val", loss, outputs.size(0))
-            apmeter_val.add(outputs, targets, data["name"])
+            apmeter_val.add(outputs, gt_targets, data["name"])
 
         # log metrics
         ap = apmeter_train.value()
