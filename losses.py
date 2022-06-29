@@ -1,6 +1,7 @@
 from enum import Enum
 from torch import Tensor, nn
 import torch
+from torch.nn import functional as F
 
 def get_loss(type:str):
     if type=='bce':
@@ -15,12 +16,15 @@ def get_loss(type:str):
 
 class PartialBCE(nn.Module):
     def __init__(self, alpha, beta, gamma):
+        super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
 
     def forward(self, outputs: Tensor, targets: Tensor, weights=None):
-        masks=targets.clone()
+        outputs=F.sigmoid(outputs)
+
+        masks=targets.detach()
         # generate mask. only 1 and -1 are valid labels.
         masks[masks==-1]=1
         # set -1 as 0 to fit standard BCE loss
@@ -28,7 +32,8 @@ class PartialBCE(nn.Module):
 
         batch_size, chan = outputs.size()
         criterion = torch.nn.BCELoss(reduction="none").cuda()
-        loss = criterion(outputs, targets)
+        # BCEloss needs targets be float
+        loss = criterion(outputs, targets.float())
         if weights is not None:
             loss = loss * weights
         # masks==0 are masked

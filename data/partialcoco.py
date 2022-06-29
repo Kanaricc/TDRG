@@ -26,7 +26,7 @@ class COCO2014Partial(COCO2014Dataset):
     def get_full_labels(self,raw_ids:List[int]):
         labels=[]
         for id in raw_ids:
-            t=torch.zeros(self.num_classes)
+            t=torch.zeros(self.num_classes,dtype=torch.int)
             t[self.origin_img_lists[id]['labels']]=1
             labels.append(t.unsqueeze(0))
         
