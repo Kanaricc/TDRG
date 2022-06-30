@@ -24,13 +24,13 @@ class PartialBCE(nn.Module):
     def forward(self, outputs: Tensor, targets: Tensor, weights=None):
         outputs=F.sigmoid(outputs)
 
-        masks=targets.detach()
+        masks=targets.detach().clone()
         # generate mask. only 1 and -1 are valid labels.
         masks[masks==-1]=1
         # set -1 as 0 to fit standard BCE loss
         targets[targets==-1]=0
 
-        batch_size, chan = outputs.size()
+        batch_size, num_class = outputs.size()
         criterion = torch.nn.BCELoss(reduction="none").cuda()
         # BCEloss needs targets be float
         loss = criterion(outputs, targets.float())
@@ -39,7 +39,7 @@ class PartialBCE(nn.Module):
         # masks==0 are masked
         loss = loss * masks.float()
         known_ys = masks.float().sum(1)
-        p_y = known_ys / chan
+        p_y = known_ys / num_class
         g_p_y = self.alpha * (p_y**self.gamma) + self.beta
-        loss = ((g_p_y / chan) * loss.sum(1)).mean()
+        loss = ((g_p_y / num_class) * loss.sum(1)).mean()
         return loss
