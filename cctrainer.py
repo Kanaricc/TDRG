@@ -40,7 +40,7 @@ def train(
     image_size: int = 448,
     epoch_step: List[int] = [40],
     label_percent:float=1.0,
-    comment:str='baseline-fulllabel',
+    comment:str='tdrg-fulllabel',
     dry_run = False,
 ):
     helper = TrainHelper(
@@ -114,7 +114,8 @@ def train(
     criterion = get_loss(loss_type)
 
     helper.set_fixed_seed(1)
-    model = Baseline(2048,num_classes).to(helper.dev)
+    # model = Baseline(2048,num_classes).to(helper.dev)
+    model = TDRG(torchvision.models.resnet101(pretrained=True),num_classes).to(helper.dev)
 
     optimizer = SGD(
         model.get_config_optim(lr, lrp),
