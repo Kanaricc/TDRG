@@ -22,6 +22,7 @@ from losses import get_loss
 
 import inspect
 
+
 def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
     decay = 0.1 if (torch.tensor(helper.get("epoch_step")) == epochi).sum() > 0 else 1.0
     for param_group in opti.param_groups:
@@ -29,7 +30,7 @@ def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
 
 
 def train(
-    loss_type:str = 'bce',
+    loss_type: str = "bce",
     epoch_num: int = 50,
     batch_size: int = 8,
     lr: float = 0.03,
@@ -39,9 +40,9 @@ def train(
     max_clip_grad_norm: float = 10.0,
     image_size: int = 448,
     epoch_step: List[int] = [40],
-    label_percent:float=1.0,
-    comment:str='tdrg-fulllabel',
-    dry_run = False,
+    label_percent: float = 1.0,
+    comment: str = "tdrg-fulllabel",
+    dry_run=False,
 ):
     helper = TrainHelper(
         "tdrg",
@@ -77,45 +78,52 @@ def train(
     def transform_wrapper(x, transform):
         x["image"] = transform(x["image"])
         return x
-    
-    if loss_type=='bce':
+
+    if loss_type == "bce":
         raw_trainset = COCO2014Partial(
             helper.get_dataset_slot("coco2014"), lambda x: x, "train"
         )
     else:
         raw_trainset = COCO2014Partial(
-            helper.get_dataset_slot("coco2014"), lambda x: x, "train",negatives_as_neg1=True
+            helper.get_dataset_slot("coco2014"),
+            lambda x: x,
+            "train",
+            negatives_as_neg1=True,
         )
         logger.info("use negative 1 for negative labels")
     # seems not proper. we do not need to drop validation set.
-    raw_trainset.drop_labels(label_percent,1)
+    raw_trainset.drop_labels(label_percent, 1)
     trainset, valset = torch.utils.data.random_split(
         raw_trainset,
-        [int(len(raw_trainset) * 0.8), len(raw_trainset) - int(len(raw_trainset) * 0.8)],
+        [
+            int(len(raw_trainset) * 0.8),
+            len(raw_trainset) - int(len(raw_trainset) * 0.8),
+        ],
         generator=torch.Generator().manual_seed(1),
     )
     testset = COCO2014Partial(helper.get_dataset_slot("coco2014"), transform_val, "val")
     dataloader_train = DataLoader(
         DatasetWrapper(trainset, lambda x: transform_wrapper(x, transform_train)),
         helper.batch_size,
-        drop_last=True
+        drop_last=True,
     )
     dataloader_val = DataLoader(
         DatasetWrapper(valset, lambda x: transform_wrapper(x, transform_val)),
         helper.batch_size,
-        drop_last=True
+        drop_last=True,
     )
     dataloader_test = DataLoader(testset, helper.batch_size, drop_last=True)
     num_classes = trainset[0]["target"].size(-1)
     helper.register_dataset(trainset, dataloader_train, valset, dataloader_val)
-    helper.register_test_dataset(testset,dataloader_test)
+    helper.register_test_dataset(testset, dataloader_test)
 
-    criterion = torch.nn.MultiLabelSoftMarginLoss().to(helper.dev)
     criterion = get_loss(loss_type)
 
     helper.set_fixed_seed(1)
     # model = Baseline(2048,num_classes).to(helper.dev)
-    model = TDRG(torchvision.models.resnet101(pretrained=True),num_classes).to(helper.dev)
+    model = TDRG(torchvision.models.resnet101(pretrained=True), num_classes).to(
+        helper.dev
+    )
 
     optimizer = SGD(
         model.get_config_optim(lr, lrp),
@@ -125,12 +133,12 @@ def train(
     )
 
     if helper.if_need_load_checkpoint():
-        checkpoint_path=helper.find_latest_checkpoint()
-        if checkpoint_path!=None:
-            checkpoint=torch.load(checkpoint_path)
-            model.load_state_dict(checkpoint['model'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            helper.load_from_checkpoint(checkpoint['helper'])
+        checkpoint_path = helper.find_latest_checkpoint()
+        if checkpoint_path != None:
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["model"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            helper.load_from_checkpoint(checkpoint["helper"])
 
     apmeter_train = AveragePrecisionMeter(False)
     apmeter_val = AveragePrecisionMeter(False)
@@ -165,11 +173,17 @@ def train(
             inputs = inputs.to(helper.dev)
             targets = targets.to(helper.dev)
 
-            outputs = model(inputs)
+            out_trans, out_gcn, out_sac = model(inputs)
+            outputs = 0.7 * out_trans + 0.3 * out_gcn
 
-            loss = criterion(outputs, targets)
+            loss = (
+                criterion(outputs, targets)
+                + criterion(out_trans, targets)
+                + criterion(out_gcn, targets)
+                + criterion(out_sac, targets)
+            )
             helper.validate_loss(loss)
-            
+
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad.clip_grad_norm_(
@@ -189,12 +203,18 @@ def train(
             targets = targets.to(helper.dev)
 
             # to get full labels for ap calculation
-            gt_targets=raw_trainset.get_full_labels(data['index']).to(helper.dev)
+            gt_targets = raw_trainset.get_full_labels(data["index"]).to(helper.dev)
 
             with torch.no_grad():
-                outputs = model(inputs)
+                out_trans, out_gcn, out_sac = model(inputs)
+            outputs = 0.7 * out_trans + 0.3 * out_gcn
 
-            loss = criterion(outputs, targets)
+            loss = (
+                criterion(outputs, targets)
+                + criterion(out_trans, targets)
+                + criterion(out_gcn, targets)
+                + criterion(out_sac, targets)
+            )
 
             helper.update_loss_probe("val", loss, outputs.size(0))
             apmeter_val.add(outputs, gt_targets, data["name"])
@@ -274,24 +294,30 @@ def train(
                 },
                 helper.get_best_checkpoint_slot(),
             )
-        
+
         # test phase
         if helper.if_need_run_test_phase():
             model.eval()
             apmeter_test = AveragePrecisionMeter(False)
-            for batchi,data in helper.range_test():
+            for batchi, data in helper.range_test():
                 inputs: Tensor = data["image"]
                 targets: Tensor = data["target"]
                 inputs = inputs.to(helper.dev)
                 targets = targets.to(helper.dev)
 
                 with torch.no_grad():
-                    outputs = model(inputs)
+                    out_trans, out_gcn, out_sac = model(inputs)
+                outputs = 0.7 * out_trans + 0.3 * out_gcn
+                loss = (
+                    criterion(outputs, targets)
+                    + criterion(out_trans, targets)
+                    + criterion(out_gcn, targets)
+                    + criterion(out_sac, targets)
+                )
 
-                loss = criterion(outputs, targets)
                 helper.update_loss_probe("test", loss, outputs.size(0))
                 apmeter_test.add(outputs, targets, data["name"])
-            
+
             ap = apmeter_test.value()
             map = ap.mean()
             OP, OR, OF1, CP, CR, CF1 = apmeter_test.overall()
@@ -321,5 +347,5 @@ def train(
         helper.end_epoch()
 
 
-if __name__=='__main__':
+if __name__ == "__main__":
     TrainHelper.auto_bind_and_run(train)
