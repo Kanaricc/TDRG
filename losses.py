@@ -42,4 +42,4 @@ class PartialBCE(nn.Module):
         p_y = known_ys / num_class
         g_p_y = self.alpha * (p_y**self.gamma) + self.beta
         loss = ((g_p_y / num_class) * loss.sum(1)).mean()
-        return loss
+        return 0.01*loss

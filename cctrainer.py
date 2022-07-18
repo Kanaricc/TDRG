@@ -33,7 +33,7 @@ def train(
     loss_type: str = "bce",
     epoch_num: int = 50,
     batch_size: int = 8,
-    lr: float = 0.03,
+    lr: float = 0.0005,
     lrp: float = 0.1,
     momentum: float = 0.9,
     weight_decay: float = 1e-4,
