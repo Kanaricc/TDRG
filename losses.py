@@ -39,6 +39,5 @@ class PartialBCE(nn.Module):
         known_ys = masks.float().sum(1)
         p_y = known_ys / num_class
         g_p_y = self.alpha * (p_y**self.gamma) + self.beta
-        print(g_p_y,num_class,loss.sum(1))
         loss = ((g_p_y / num_class) * loss.sum(1)).mean()
         return loss
