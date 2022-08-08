@@ -33,7 +33,7 @@ def train(
     loss_type: str = "bce",
     epoch_num: int = 50,
     batch_size: int = 8,
-    lr: float = 0.0005,
+    lr: float = 0.0075,
     lrp: float = 0.1,
     momentum: float = 0.9,
     weight_decay: float = 1e-4,
@@ -204,10 +204,13 @@ def train(
 
             # to get full labels for ap calculation
             gt_targets = raw_trainset.get_full_labels(data["index"]).to(helper.dev)
+            gt_targets[gt_targets == -1] = 0
 
             with torch.no_grad():
                 out_trans, out_gcn, out_sac = model(inputs)
             outputs = 0.7 * out_trans + 0.3 * out_gcn
+            if batchi == 0:
+                logger.debug(f"model output: {outputs}")
 
             loss = (
                 criterion(outputs, targets)
@@ -221,11 +224,11 @@ def train(
 
         # log metrics
         ap = apmeter_train.value()
-        map = ap.mean()
+        train_map = ap.mean()
         OP, OR, OF1, CP, CR, CF1 = apmeter_train.overall()
         OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_train.overall_topk(3)
 
-        helper.update_probe("map/train", map)
+        helper.update_probe("map/train", train_map)
         for k, v in {
             "OP": OP,
             "OR": OR,
@@ -247,11 +250,11 @@ def train(
             helper.update_probe(f"other_train/k_{k}", v)
 
         ap = apmeter_val.value()
-        map = ap.mean()
+        val_map = ap.mean()
         OP, OR, OF1, CP, CR, CF1 = apmeter_val.overall()
         OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = apmeter_val.overall_topk(3)
 
-        helper.update_probe("map/val", map)
+        helper.update_probe("map/val", val_map)
         for k, v in {
             "OP": OP,
             "OR": OR,
@@ -272,7 +275,7 @@ def train(
         }.items():
             helper.update_probe(f"other_val/k_{k}", v)
 
-        helper.end_trainval(map.item())
+        helper.end_trainval(train_map.item(), val_map.item())
         apmeter_train.reset()
         apmeter_val.reset()
 
