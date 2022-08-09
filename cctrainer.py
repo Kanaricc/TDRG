@@ -30,18 +30,18 @@ def tune_opti(helper: TrainHelper, opti: Optimizer, epochi: int):
 
 
 def train(
-    loss_type: str = "bce",
+    loss_type: str = "partial_bce",
     epoch_num: int = 50,
     batch_size: int = 8,
-    lr: float = 0.0075,
+    lr: float = 0.01,
     lrp: float = 0.1,
     momentum: float = 0.9,
     weight_decay: float = 1e-4,
     max_clip_grad_norm: float = 10.0,
     image_size: int = 448,
     epoch_step: List[int] = [40],
-    label_percent: float = 1.0,
-    comment: str = "tdrg-fulllabel",
+    label_percent: float = 0.1,
+    comment: str = "tdrg-pbce(0.01)-label(0.1)",
     dry_run=False,
 ):
     helper = TrainHelper(
