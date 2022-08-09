@@ -4,11 +4,12 @@ import torch
 from torch import Tensor
 from chinopie.datasets.coco2014 import COCO2014Dataset
 from loguru import logger
+import copy
 
 class COCO2014Partial(COCO2014Dataset):
     def __init__(self, root: str, preprocess: Any, phase: str = "train", negatives_as_neg1=False):
         super().__init__(root, preprocess, phase,negatives_as_neg1)
-        self.origin_img_lists=self.img_list[:]
+        self.origin_img_lists=copy.deepcopy(self.img_list)
     
     def drop_labels(self,percent:float,seed):
         tmp=self.get_all_labels()
